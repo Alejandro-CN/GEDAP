@@ -47,7 +47,7 @@ for row in rows:
 ###Insert into DB
 
 # Path to the database file 
-db_path =  "C:/Users/aleja/OneDrive/Documentos/ACN Documents/1 Kaizen/Data Science/GEDAP/GEDAP_DB.db"
+db_path = "./GEDAP_DB.db"
 conn = sqlite3.connect(db_path)
 cursor = conn.cursor()
 
