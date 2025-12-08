@@ -1,7 +1,3 @@
-# activate virual environment: venv\Scripts\Activate
-# run python script: python scripts\insert_investing_indices.py
-
-
 import sqlite3
 import requests
 from bs4 import BeautifulSoup
