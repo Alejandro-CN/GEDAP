@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 import os
 import requests
 import sqlite3
+import time
 
 
 
@@ -111,15 +112,27 @@ def parse_crypto_row(crypto_code, fiat_currency, date, values):
         float(values.get("5. volume"))
     )
 
-
-
 # Function 3.1.4: Parse commodity rows
 def parse_commodity_row(commodity_id, interval, date, values):  
+    def _safe_float(val):
+        if val is None:
+            return None
+        s = str(val).strip()
+        # common placeholders for missing values
+        if s in ("", ".", "-", "—", "N/A", "na", "None"):
+            return None
+        # remove thousands separators and spaces
+        s = s.replace(",", "").replace(" ", "")
+        try:
+            return float(s)
+        except (ValueError, TypeError):
+            return None
+
     return (
         commodity_id,
         interval,
         date,
-        float(values["1. value"])   
+        _safe_float(values.get("value"))
     )
 
 
@@ -159,10 +172,10 @@ def insert_crypto_rows(conn, rows):
     """
     insert_rows(conn, insert_sql, rows)
 
-# Function 3.2.4: Insert commodity rows into alphav_commodities_daily table.
+# Function 3.2.4: Insert commodity rows into alphav_commodity table.
 def insert_commodities_rows(conn, rows):
     insert_sql = """
-        INSERT OR IGNORE INTO alphav_commodities_daily
+        INSERT OR IGNORE INTO alphav_commodity
         (commodity_id, interval, date, value)
         VALUES (?, ?, ?, ?)
     """
@@ -174,13 +187,22 @@ def insert_commodities_rows(conn, rows):
 # ------------------------------------------------------------------------------------ 
 # Function 4.0: Filter and sort series data
 def filter_and_sort(series, max_data_date, full_load):
-    rows = [
-        (date, values)
-        for date, values in series.items()
-        if full_load or date > max_data_date
-    ]
-    return sorted(rows, key=lambda x: x[0])  # sort by date
+    # Case 1: dict-based time series (stocks, fx, crypto)
+    if isinstance(series, dict):
+        rows = [
+            (date, values)
+            for date, values in series.items()
+            if full_load or date > max_data_date
+        ]
+        return sorted(rows, key=lambda x: x[0])
 
+    # Case 2: list-based series (commodities)
+    rows = [
+        (item["date"], item)
+        for item in series
+        if full_load or item["date"] > max_data_date
+    ]
+    return sorted(rows, key=lambda x: x[0])
 
 
 
@@ -221,7 +243,7 @@ def upsert_metadata(conn, source_type, symbol, market, interval, max_data_date, 
 def alphav_loader(alphav_params, source_type, symbol, market="USD", interval="daily"):
     conn = sqlite3.connect("./GEDAP_DB.db")
 
-    print(f"=== Loading {source_type}, {symbol} ===")
+    print(f"=== Loading {source_type}, {symbol} , {market} ===")
 
     # ----------------------------------------------------
     # 1. Look up metadata to determine full vs incremental
@@ -299,3 +321,5 @@ def alphav_loader(alphav_params, source_type, symbol, market="USD", interval="da
 
     print("Metadata updated.")
     conn.close()
+
+    time.sleep(15)  # throttle calls to avoid rate limits
