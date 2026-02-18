@@ -174,7 +174,7 @@ def insert_commodities_rows(conn, rows):
     """
     insert_rows(conn, insert_sql, rows)
 
-
+# Function 3.2.5: Upsert commodity metadata into alphav_commodity_lookup table.
 def upsert_commodity_lookup(conn, commodity_id, commodity_name, interval, unit):
     cursor = conn.cursor()
     cursor.execute("""
