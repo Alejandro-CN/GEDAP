@@ -13,5 +13,6 @@ for symbol in symbols:
         source_type="stocks",
         symbol=symbol,
         market="USD",
-        interval="daily"
+        interval="daily",
+        history_sweep=False
     )

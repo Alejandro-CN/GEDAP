@@ -1,6 +1,6 @@
 from .utils.alphav_functions import alphav_loader
 
-currencies = ["MXN", "CAD","EUR", "GBP", "JPY"] 
+currencies = ["MXN", "CAD", "EUR", "GBP", "JPY"] 
 
 for currency in currencies:
     params = {
@@ -14,5 +14,6 @@ for currency in currencies:
         source_type="fx",
         symbol="USD",
         market=currency,
-        interval="daily"
+        interval="daily",
+        history_sweep=False
     )

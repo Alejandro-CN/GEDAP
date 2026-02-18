@@ -1,4 +1,3 @@
-from pathlib import Path
 from dotenv import load_dotenv
 import os
 import requests
@@ -9,12 +8,7 @@ import time
 
 
 # load .env by searching upward from this file until one is found
-resolved = Path(__file__).resolve()
-for ancestor in resolved.parents:
-    candidate = ancestor / ".env"
-    if candidate.exists():
-        load_dotenv(candidate)
-        break
+load_dotenv()
 
 # Getting API key from environment variable
 ALPHAVANTAGE_API_KEY = os.environ.get("ALPHAVANTAGE_API_KEY")
@@ -113,7 +107,7 @@ def parse_crypto_row(crypto_code, fiat_currency, date, values):
     )
 
 # Function 3.1.4: Parse commodity rows
-def parse_commodity_row(commodity_id, interval, date, values):  
+def parse_commodity_row(commodity_id, date, values):  
     def _safe_float(val):
         if val is None:
             return None
@@ -130,7 +124,6 @@ def parse_commodity_row(commodity_id, interval, date, values):
 
     return (
         commodity_id,
-        interval,
         date,
         _safe_float(values.get("value"))
     )
@@ -176,10 +169,24 @@ def insert_crypto_rows(conn, rows):
 def insert_commodities_rows(conn, rows):
     insert_sql = """
         INSERT OR IGNORE INTO alphav_commodity
-        (commodity_id, interval, date, value)
-        VALUES (?, ?, ?, ?)
+        (commodity_id, date, value)
+        VALUES (?, ?, ?)
     """
     insert_rows(conn, insert_sql, rows)
+
+# Function 3.2.5: Upsert commodity metadata into alphav_commodity_lookup table.
+def upsert_commodity_lookup(conn, commodity_id, commodity_name, interval, unit):
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO alphav_commodity_lookup
+        (commodity_id, commodity_name, interval, unit)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(commodity_id) DO UPDATE SET
+            commodity_name = excluded.commodity_name,
+            interval = excluded.interval,
+            unit = excluded.unit
+    """, (commodity_id, commodity_name, interval, unit))
+    conn.commit()
 
 
 
@@ -187,21 +194,27 @@ def insert_commodities_rows(conn, rows):
 # ------------------------------------------------------------------------------------ 
 # Function 4.0: Filter and sort series data
 def filter_and_sort(series, max_data_date, full_load):
+    print(f"DEBUG filter_and_sort: full_load={full_load}, max_data_date={max_data_date}")
+    
     # Case 1: dict-based time series (stocks, fx, crypto)
     if isinstance(series, dict):
+        print(f"DEBUG: Processing dict-based series with {len(series)} items")
         rows = [
             (date, values)
             for date, values in series.items()
             if full_load or date > max_data_date
         ]
+        print(f"DEBUG: After filtering, {len(rows)} rows remain")
         return sorted(rows, key=lambda x: x[0])
 
     # Case 2: list-based series (commodities)
+    print(f"DEBUG: Processing list-based series with {len(series)} items")
     rows = [
         (item["date"], item)
         for item in series
         if full_load or item["date"] > max_data_date
     ]
+    print(f"DEBUG: After filtering, {len(rows)} rows remain")
     return sorted(rows, key=lambda x: x[0])
 
 
@@ -209,7 +222,7 @@ def filter_and_sort(series, max_data_date, full_load):
 # ------------------------------------------------------------------------------------ 
 # Function 5: Extract date from row based on source type  
 def extract_date(row, source_type):
-    if source_type == "stocks":
+    if source_type in ("stocks", "commodity"):
         return row[1]
     else:
         return row[2]
@@ -218,7 +231,7 @@ def extract_date(row, source_type):
 
 
 # ------------------------------------------------------------------------------------ 
-# Function 6: Upsert metadata for Alphavantage data sources.
+# Function 6: Upsert metadata for Alphavantage
 def upsert_metadata(conn, source_type, symbol, market, interval, max_data_date, api_last_refresh):
     cursor = conn.cursor()
     cursor.execute("""
@@ -240,15 +253,20 @@ def upsert_metadata(conn, source_type, symbol, market, interval, max_data_date, 
 
 # ------------------------------------------------------------------------------------ 
 # Function X: alphav_loader
-def alphav_loader(alphav_params, source_type, symbol, market="USD", interval="daily"):
+def alphav_loader(alphav_params, source_type, symbol, market="USD", interval="daily", history_sweep=False):
     conn = sqlite3.connect("./GEDAP_DB.db")
+    conn.execute("PRAGMA foreign_keys = ON;")
 
     print(f"=== Loading {source_type}, {symbol} , {market} ===")
 
     # ----------------------------------------------------
     # 1. Look up metadata to determine full vs incremental
-    max_data_date = get_metadata(conn, source_type, symbol, market, interval)
-    full_load = max_data_date is None
+    if history_sweep:
+        max_data_date = None
+        full_load = True
+    else:
+        max_data_date = get_metadata(conn, source_type, symbol, market, interval)
+        full_load = max_data_date is None
 
     print(f"Max data date = {max_data_date}")
     print("Performing FULL LOAD" if full_load else "Performing INCREMENTAL LOAD")
@@ -277,8 +295,17 @@ def alphav_loader(alphav_params, source_type, symbol, market="USD", interval="da
         inserter = insert_crypto_rows
 
     elif source_type == "commodity":
-        parser = lambda date, values: parse_commodity_row(symbol, interval, date, values)
+        parser = lambda date, values: parse_commodity_row(symbol, date, values)
         inserter = insert_commodities_rows
+
+        # Upsert metadata into the commodity lookup table
+        upsert_commodity_lookup(
+            conn,
+            symbol,
+            meta.get("name"),
+            meta.get("interval"),
+            meta.get("unit")
+        )
 
     else:
         conn.close()
@@ -309,17 +336,20 @@ def alphav_loader(alphav_params, source_type, symbol, market="USD", interval="da
 
     # ----------------------------------------------------
     # 6. Upsert metadata
-    upsert_metadata(
-        conn,
-        source_type=source_type,
-        symbol=symbol,
-        market=market,
-        interval=interval,
-        max_data_date=max_data_date,
-        api_last_refresh=api_last_refresh
-    )
+    if new_rows:
+        upsert_metadata(
+            conn,
+            source_type=source_type,
+            symbol=symbol,
+            market=market,
+            interval=interval,
+            max_data_date=max_data_date,
+            api_last_refresh=api_last_refresh
+        )
+        print("Metadata updated.")
+    else:
+        print("Metadata NOT updated; no new data retrieved.")
 
-    print("Metadata updated.")
     conn.close()
 
     time.sleep(15)  # throttle calls to avoid rate limits

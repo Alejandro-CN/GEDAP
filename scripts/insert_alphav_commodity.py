@@ -15,5 +15,6 @@ for commodity in commodities:
         source_type="commodity",
         symbol=commodity["commodity_id"],   
         market="USD",                   
-        interval=commodity["params"]["interval"]
+        interval=commodity["params"]["interval"],
+        history_sweep=False
     )
