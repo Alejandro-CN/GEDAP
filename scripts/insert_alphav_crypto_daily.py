@@ -14,5 +14,6 @@ for crypto in cryptos:
         source_type="crypto",
         symbol=crypto,
         market="USD",
-        interval="daily"
+        interval="daily",
+        history_sweep=True
     )

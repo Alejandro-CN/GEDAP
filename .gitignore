@@ -212,3 +212,6 @@ database example.xlsx
 
 # ToDo list
 todo.md
+
+# Debug files
+*_debug.py
