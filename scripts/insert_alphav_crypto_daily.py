@@ -1,6 +1,6 @@
 from .utils.alphav_functions import alphav_loader
 
-cryptos = ["BTC", "ETH", "USDT", "USDC", "SOL"] 
+cryptos = ["BTC", "ETH", "USDT", "SOL"] 
 
 for crypto in cryptos:
     params = {
@@ -15,5 +15,5 @@ for crypto in cryptos:
         symbol=crypto,
         market="USD",
         interval="daily",
-        history_sweep=True
+        history_sweep=False
     )
