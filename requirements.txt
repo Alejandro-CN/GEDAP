@@ -1,0 +1,19 @@
+# Financial Data ETL Platform - GEDAP
+# Python 3.11+ required
+
+# Web Framework & Visualization
+streamlit>=1.28.0
+plotly>=5.14.0
+
+# Data Processing
+pandas>=2.0.0
+numpy>=1.25.0
+
+# API & Web Scraping
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+
+# Configuration
+python-dotenv>=1.0.0
+
+# Database (sqlite3 is built-in with Python)
